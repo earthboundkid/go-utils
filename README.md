@@ -1,7 +1,7 @@
 shuffle
 =======
 
-Implementation of the Fisher–Yates shuffle (or Knuth shuffle) in Go.
+Implementation of the [Fisher–Yates shuffle](http://en.wikipedia.org/wiki/Fisher–Yates_shuffle) (or Knuth shuffle) in Go.
 
 Usage
 -----
