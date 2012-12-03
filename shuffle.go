@@ -1,7 +1,8 @@
 // By Carl M. Johnson, MIT License
 
 // Package shuffle implements the Fisher–Yates shuffle (or Knuth shuffle).
-// See http://en.wikipedia.org/wiki/Fisher–Yates_shuffle
+//
+// See http://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
 package shuffle
 
 import "math/rand"
@@ -15,8 +16,8 @@ type Interface interface {
 }
 
 // Shuffle shuffles the data using the following algorithm:
-// To shuffle an array a of n elements (indices 0..n-1):
-//   for i from n − 1 downto 1 do
+//   To shuffle an array a of n elements (indices 0..n-1):
+//     for i from n − 1 downto 1 do
 //       j ← random integer with 0 ≤ j ≤ i
 //       exchange a[j] and a[i]
 // (thanks Wikipedia)
