@@ -2,8 +2,9 @@ package shuffle_test
 
 import (
 	"fmt"
-	"github.com/earthboundkid/shuffle"
 	"sort"
+
+	"github.com/carlmjohnson/go-utils/shuffle"
 )
 
 func Example() {
