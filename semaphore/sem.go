@@ -35,7 +35,7 @@ func (s *Semaphore) Release() {
 
 func (s *Semaphore) Stop() {
 	s.once.Do(func() {
-		close(s.done)
 		s.sem = nil
+		close(s.done)
 	})
 }
