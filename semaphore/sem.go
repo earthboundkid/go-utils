@@ -53,3 +53,16 @@ func (s *Semaphore) Stop() {
 		close(s.done)
 	})
 }
+
+// Poll reports whether the underlying Semaphore is open. For practical
+// purposes, this is only useful for routines that are already holding
+// a token from Acquire() if they want to decide to continue working on
+// an expensive operation.
+func (s *Semaphore) Poll() bool {
+	select {
+	case <-s.done:
+		return false
+	default:
+		return true
+	}
+}
