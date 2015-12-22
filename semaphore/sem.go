@@ -12,7 +12,11 @@ import "sync"
 type Semaphore struct {
 	sem  chan struct{}
 	done chan struct{}
-	rw   sync.RWMutex
+	// rw ensures that no calls to Release after a call to Stop will
+	// result in a token being returned (and thereby acquired by a
+	// previously blocked call to Aquire).
+	rw sync.RWMutex
+	// once ensures that done is not closed twice.
 	once sync.Once
 }
 
