@@ -1,5 +1,5 @@
 // Package semaphore is a package containing a simple reference
-// implementation of a semaphore type. If you need to a semaphore in
+// implementation of a semaphore type. If you need to use a semaphore in
 // your own package, probably the right way to use this package is to
 // copy it and make your own specialized implementation.
 package semaphore
