@@ -43,19 +43,17 @@ func (s *Semaphore) Acquire() bool {
 	}
 }
 
-// Release is a non-blocking operation to return a Semaphore token. It
-// is safe to call after the Semaphore has been closed with Stop().
+// Release returns a Semaphore token. It is safe to call after the
+// Semaphore has been closed with Stop().
 func (s *Semaphore) Release() {
-	go func() {
-		s.rw.RLock()
-		sem := s.sem
-		s.rw.RUnlock()
+	s.rw.RLock()
+	sem := s.sem
+	s.rw.RUnlock()
 
-		select {
-		case <-sem:
-		case <-s.done:
-		}
-	}()
+	select {
+	case <-sem:
+	case <-s.done:
+	}
 }
 
 // Stop closes its underlying Semaphore. It is safe to call multiple
