@@ -12,6 +12,7 @@ import "sync"
 type Semaphore struct {
 	sem  chan struct{}
 	done chan struct{}
+	rw   sync.RWMutex
 	once sync.Once
 }
 
@@ -26,8 +27,12 @@ func New(n int) *Semaphore {
 // Acquire returns true after it acquires a token from the underlying
 // Semaphore or false if the Semaphore has been closed with Stop().
 func (s *Semaphore) Acquire() bool {
+	s.rw.RLock()
+	sem := s.sem
+	s.rw.RUnlock()
+
 	select {
-	case s.sem <- struct{}{}:
+	case sem <- struct{}{}:
 		return true
 	case <-s.done:
 		return false
@@ -38,8 +43,12 @@ func (s *Semaphore) Acquire() bool {
 // is safe to call after the Semaphore has been closed with Stop().
 func (s *Semaphore) Release() {
 	go func() {
+		s.rw.RLock()
+		sem := s.sem
+		s.rw.RUnlock()
+
 		select {
-		case <-s.sem:
+		case <-sem:
 		case <-s.done:
 		}
 	}()
@@ -49,6 +58,9 @@ func (s *Semaphore) Release() {
 // times.
 func (s *Semaphore) Stop() {
 	s.once.Do(func() {
+		s.rw.Lock()
+		defer s.rw.Unlock()
+
 		s.sem = nil
 		close(s.done)
 	})
