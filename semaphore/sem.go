@@ -4,7 +4,10 @@
 // copy it and make your own specialized implementation.
 package semaphore
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // A Semaphore helps add restrictions on the number of active goroutines
 // by ensuring that no more than n tokens may be acquired at one time.
@@ -79,4 +82,12 @@ func (s *Semaphore) Poll() bool {
 	default:
 		return true
 	}
+}
+
+func (s *Semaphore) String() string {
+	s.rw.RLock()
+	capacity, length := cap(s.sem), len(s.sem)
+	s.rw.RUnlock()
+
+	return fmt.Sprintf("Semaphore{ n: %d, used: %d }", capacity, length)
 }
