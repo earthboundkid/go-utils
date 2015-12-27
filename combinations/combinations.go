@@ -81,7 +81,7 @@ func NewStringK(src string, k int) StringK {
 }
 
 func (s *StringK) Next() bool {
-	if r := s.i.Next(); !r {
+	if !s.i.Next() {
 		return false
 	}
 
@@ -109,7 +109,7 @@ func NewString(src string) String {
 }
 
 func (s *String) Next() bool {
-	if r := s.sk.Next(); !r {
+	if !s.sk.Next() {
 		if s.sk.i.K+1 > len(s.sk.src) {
 			return false
 		}
