@@ -59,3 +59,64 @@ func (c *Iterator) Next() bool {
 
 	return true
 }
+
+// StringN iterates through sub-string combinations of length K.
+//
+// E.g. For "abc", 2; Comb is set to "ab", "ac", and "bc" succesively.
+type StringK struct {
+	Comb string
+	src  string
+	// This is private because it violates the law of Demeter
+	i    Iterator
+}
+
+func NewStringK(src string, k int) StringK {
+	return StringK{
+		src: src,
+		i: Iterator{
+			N: len(src),
+			K: k,
+		},
+	}
+}
+
+func (s *StringK) Next() bool {
+	if r := s.i.Next(); !r {
+		return false
+	}
+
+	runeSrc := []rune(s.src)
+	runeDest := make([]rune, len(s.i.Comb))
+	for i, v := range s.i.Comb {
+		runeDest[i] = runeSrc[v]
+	}
+	s.Comb = string(runeDest)
+
+	return true
+}
+
+// String iterates through all sub-string combinations of its source
+// from shortest to longest.
+type String struct {
+	sk   StringK
+	Comb string
+}
+
+func NewString(src string) String {
+	return String{
+		sk: NewStringK(src, 1),
+	}
+}
+
+func (s *String) Next() bool {
+	if r := s.sk.Next(); !r {
+		if s.sk.i.K+1 > len(s.sk.src) {
+			return false
+		}
+		s.sk.i.K++
+		s.sk.Next()
+	}
+	// This is cheap because a string is just a pointer
+	s.Comb = s.sk.Comb
+	return true
+}
