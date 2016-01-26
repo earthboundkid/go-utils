@@ -13,50 +13,71 @@ import (
 // by ensuring that no more than n tokens may be acquired at one time.
 // It also allows for the broadcasting of Stop messages.
 type Semaphore struct {
-	max   int
-	count int
 	// use chan bool to simplify testing if channel is closed
 	acquire chan bool
 	release chan struct{}
-	stop    chan bool
+	// chan chan so that stop can wait for the main routine to finish
+	stop     chan chan struct{}
+	poll     chan struct{}
+	stringer chan stringerData
 	// once ensures that stop/done are not closed twice.
 	once sync.Once
+}
+
+type stringerData struct {
+	max, count int
+	open       bool
 }
 
 // New creates a new Semaphore with n max number of tokens allowed.
 func New(n int) *Semaphore {
 	s := Semaphore{
-		max:     n,
-		count:   0,
-		acquire: make(chan bool),
-		release: make(chan struct{}),
-		stop:    make(chan bool),
+		acquire:  make(chan bool),
+		release:  make(chan struct{}),
+		stop:     make(chan chan struct{}),
+		poll:     make(chan struct{}),
+		stringer: make(chan stringerData),
 	}
-	go s.start()
+	go s.start(n)
 	return &s
 }
 
-func (s *Semaphore) start() {
+func (s *Semaphore) start(max int) {
+	var (
+		count int
+		wait  chan struct{}
+	)
+
 MainLoop:
 	for {
 		var acquire = s.acquire
 
 		// nil always blocks sends
-		if s.count >= s.max {
+		if count >= max {
 			acquire = nil
 		}
 
 		select {
 		case acquire <- true:
-			s.count++
+			count++
 		case s.release <- struct{}{}:
-			s.count--
-		case <-s.stop:
+			count--
+		case s.stringer <- stringerData{max, count, true}:
+		case wait = <-s.stop:
 			break MainLoop
 		}
 	}
 	close(s.acquire)
-	close(s.stop)
+	close(s.stringer)
+
+	if wait != nil {
+		for count > 0 {
+			s.release <- struct{}{}
+			count--
+		}
+		close(wait)
+	}
+	close(s.release)
 }
 
 // Acquire returns true after it acquires a token from the underlying
@@ -76,20 +97,13 @@ func (s *Semaphore) Release() {
 // released.
 func (s *Semaphore) Stop(wait bool) {
 	s.once.Do(func() {
+		close(s.poll)
 		if wait {
-			// Block until .start has returned...
-			s.stop <- true
-			// Then drain the channel
-			for s.count > 0 {
-				s.release <- struct{}{}
-				s.count--
-			}
-			// Shouldn't matter unless there's a programmatic error, but
-			// let's close this anyway...
-			close(s.release)
+			blocker := make(chan struct{})
+			s.stop <- blocker
+			<-blocker
 		} else {
-			s.stop <- true
-			close(s.release)
+			s.stop <- nil
 		}
 	})
 }
@@ -100,18 +114,17 @@ func (s *Semaphore) Stop(wait bool) {
 // an expensive operation.
 func (s *Semaphore) Poll() bool {
 	select {
-	case stopping := <-s.stop:
-		// Oops, we interrupted before this was caught by the main loop
-		if stopping {
-			s.stop <- true
-		}
+	case <-s.poll:
 		return false
 	default:
 		return true
 	}
 }
 
-// Warning: This is racy
 func (s *Semaphore) String() string {
-	return fmt.Sprintf("Semaphore{ n: %d, used: %d }", s.max, s.count)
+	v := <-s.stringer
+	if v.open {
+		return fmt.Sprintf("Semaphore{ n: %d, used: %d }", v.max, v.count)
+	}
+	return "Semaphore{closed}"
 }
