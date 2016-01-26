@@ -13,11 +13,12 @@ import (
 // by ensuring that no more than n tokens may be acquired at one time.
 // It also allows for the broadcasting of Stop messages.
 type Semaphore struct {
-	max     int
-	count   int
-	acquire chan struct{}
+	max   int
+	count int
+	// use chan bool to simplify testing if channel is closed
+	acquire chan bool
 	release chan struct{}
-	stop    chan struct{}
+	stop    chan bool
 	// once ensures that stop/done are not closed twice.
 	once sync.Once
 }
@@ -27,9 +28,9 @@ func New(n int) *Semaphore {
 	s := Semaphore{
 		max:     n,
 		count:   0,
-		acquire: make(chan struct{}),
+		acquire: make(chan bool),
 		release: make(chan struct{}),
-		stop:    make(chan struct{}),
+		stop:    make(chan bool),
 	}
 	go s.start()
 	return &s
@@ -43,7 +44,7 @@ func (s *Semaphore) start() {
 			select {
 			case s.release <- struct{}{}:
 				s.count--
-			case s.acquire <- struct{}{}:
+			case s.acquire <- true:
 				s.count++
 			case <-s.stop:
 				return
@@ -62,8 +63,7 @@ func (s *Semaphore) start() {
 // Acquire returns true after it acquires a token from the underlying
 // Semaphore or false if the Semaphore has been closed with Stop().
 func (s *Semaphore) Acquire() bool {
-	_, ok := <-s.acquire
-	return ok
+	return <-s.acquire
 }
 
 // Release returns a Semaphore token. It is safe to call after the
@@ -79,7 +79,7 @@ func (s *Semaphore) Stop(wait bool) {
 	s.once.Do(func() {
 		if wait {
 			// Block until .start has returned...
-			s.stop <- struct{}{}
+			s.stop <- true
 			// Then drain the channel
 			for s.count > 0 {
 				s.release <- struct{}{}
@@ -89,7 +89,7 @@ func (s *Semaphore) Stop(wait bool) {
 			// let's close this anyway...
 			close(s.release)
 		} else {
-			s.stop <- struct{}{}
+			s.stop <- true
 			close(s.release)
 		}
 	})
@@ -101,10 +101,10 @@ func (s *Semaphore) Stop(wait bool) {
 // an expensive operation.
 func (s *Semaphore) Poll() bool {
 	select {
-	case _, ok := <-s.stop:
+	case stopping := <-s.stop:
 		// Oops, we interrupted before this was caught by the main loop
-		if ok {
-			s.stop <- struct{}{}
+		if stopping {
+			s.stop <- true
 		}
 		return false
 	default:
