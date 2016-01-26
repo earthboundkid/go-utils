@@ -37,27 +37,26 @@ func New(n int) *Semaphore {
 }
 
 func (s *Semaphore) start() {
-	defer close(s.acquire)
-	defer close(s.stop)
+MainLoop:
 	for {
-		if s.count < s.max {
-			select {
-			case s.release <- struct{}{}:
-				s.count--
-			case s.acquire <- true:
-				s.count++
-			case <-s.stop:
-				return
-			}
-		} else {
-			select {
-			case s.release <- struct{}{}:
-				s.count--
-			case <-s.stop:
-				return
-			}
+		var acquire = s.acquire
+
+		// nil always blocks sends
+		if s.count >= s.max {
+			acquire = nil
+		}
+
+		select {
+		case acquire <- true:
+			s.count++
+		case s.release <- struct{}{}:
+			s.count--
+		case <-s.stop:
+			break MainLoop
 		}
 	}
+	close(s.acquire)
+	close(s.stop)
 }
 
 // Acquire returns true after it acquires a token from the underlying
