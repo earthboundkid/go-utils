@@ -13,13 +13,11 @@ import (
 // by ensuring that no more than n tokens may be acquired at one time.
 // It also allows for the broadcasting of Stop messages.
 type Semaphore struct {
-	max         int
-	count       int
-	acquire     chan struct{}
-	doneAcquire chan struct{}
-	release     chan struct{}
-	doneRelease chan struct{}
-	stop        chan struct{}
+	max     int
+	count   int
+	acquire chan struct{}
+	release chan struct{}
+	stop    chan struct{}
 	// once ensures that stop/done are not closed twice.
 	once sync.Once
 }
@@ -27,36 +25,34 @@ type Semaphore struct {
 // New creates a new Semaphore with n max number of tokens allowed.
 func New(n int) *Semaphore {
 	s := Semaphore{
-		max:         n,
-		count:       0,
-		acquire:     make(chan struct{}),
-		doneAcquire: make(chan struct{}),
-		release:     make(chan struct{}),
-		doneRelease: make(chan struct{}),
-		stop:        make(chan struct{}),
+		max:     n,
+		count:   0,
+		acquire: make(chan struct{}),
+		release: make(chan struct{}),
+		stop:    make(chan struct{}),
 	}
 	go s.start()
 	return &s
 }
 
 func (s *Semaphore) start() {
+	defer close(s.acquire)
+	defer close(s.stop)
 	for {
 		if s.count < s.max {
 			select {
-			case <-s.release:
+			case s.release <- struct{}{}:
 				s.count--
-			case <-s.acquire:
+			case s.acquire <- struct{}{}:
 				s.count++
 			case <-s.stop:
-				close(s.doneAcquire)
 				return
 			}
 		} else {
 			select {
-			case <-s.release:
+			case s.release <- struct{}{}:
 				s.count--
 			case <-s.stop:
-				close(s.doneAcquire)
 				return
 			}
 		}
@@ -66,21 +62,14 @@ func (s *Semaphore) start() {
 // Acquire returns true after it acquires a token from the underlying
 // Semaphore or false if the Semaphore has been closed with Stop().
 func (s *Semaphore) Acquire() bool {
-	select {
-	case s.acquire <- struct{}{}:
-		return true
-	case <-s.doneAcquire:
-		return false
-	}
+	_, ok := <-s.acquire
+	return ok
 }
 
 // Release returns a Semaphore token. It is safe to call after the
 // Semaphore has been closed with Stop().
 func (s *Semaphore) Release() {
-	select {
-	case s.release <- struct{}{}:
-	case <-s.doneRelease:
-	}
+	<-s.release
 }
 
 // Stop closes its underlying Semaphore. It is safe to call multiple
@@ -93,15 +82,15 @@ func (s *Semaphore) Stop(wait bool) {
 			s.stop <- struct{}{}
 			// Then drain the channel
 			for s.count > 0 {
-				<-s.release
+				s.release <- struct{}{}
 				s.count--
 			}
 			// Shouldn't matter unless there's a programmatic error, but
 			// let's close this anyway...
-			close(s.doneRelease)
+			close(s.release)
 		} else {
-			close(s.stop)
-			close(s.doneRelease)
+			s.stop <- struct{}{}
+			close(s.release)
 		}
 	})
 }
@@ -112,7 +101,11 @@ func (s *Semaphore) Stop(wait bool) {
 // an expensive operation.
 func (s *Semaphore) Poll() bool {
 	select {
-	case <-s.doneAcquire:
+	case _, ok := <-s.stop:
+		// Oops, we interrupted before this was caught by the main loop
+		if ok {
+			s.stop <- struct{}{}
+		}
 		return false
 	default:
 		return true
