@@ -13,35 +13,63 @@ import (
 // by ensuring that no more than n tokens may be acquired at one time.
 // It also allows for the broadcasting of Stop messages.
 type Semaphore struct {
-	sem  chan struct{}
-	done chan struct{}
-	// rw ensures that no calls to Release after a call to Stop will
-	// result in a token being returned (and thereby acquired by a
-	// previously blocked call to Aquire).
-	rw sync.RWMutex
-	// once ensures that done is not closed twice.
+	max         int
+	count       int
+	acquire     chan struct{}
+	doneAcquire chan struct{}
+	release     chan struct{}
+	doneRelease chan struct{}
+	stop        chan struct{}
+	// once ensures that stop/done are not closed twice.
 	once sync.Once
 }
 
 // New creates a new Semaphore with n max number of tokens allowed.
 func New(n int) *Semaphore {
-	return &Semaphore{
-		sem:  make(chan struct{}, n),
-		done: make(chan struct{}),
+	s := Semaphore{
+		max:         n,
+		count:       0,
+		acquire:     make(chan struct{}),
+		doneAcquire: make(chan struct{}),
+		release:     make(chan struct{}),
+		doneRelease: make(chan struct{}),
+		stop:        make(chan struct{}),
+	}
+	go s.start()
+	return &s
+}
+
+func (s *Semaphore) start() {
+	for {
+		if s.count < s.max {
+			select {
+			case <-s.release:
+				s.count--
+			case <-s.acquire:
+				s.count++
+			case <-s.stop:
+				close(s.doneAcquire)
+				return
+			}
+		} else {
+			select {
+			case <-s.release:
+				s.count--
+			case <-s.stop:
+				close(s.doneAcquire)
+				return
+			}
+		}
 	}
 }
 
 // Acquire returns true after it acquires a token from the underlying
 // Semaphore or false if the Semaphore has been closed with Stop().
 func (s *Semaphore) Acquire() bool {
-	s.rw.RLock()
-	sem := s.sem
-	s.rw.RUnlock()
-
 	select {
-	case sem <- struct{}{}:
+	case s.acquire <- struct{}{}:
 		return true
-	case <-s.done:
+	case <-s.doneAcquire:
 		return false
 	}
 }
@@ -49,25 +77,32 @@ func (s *Semaphore) Acquire() bool {
 // Release returns a Semaphore token. It is safe to call after the
 // Semaphore has been closed with Stop().
 func (s *Semaphore) Release() {
-	s.rw.RLock()
-	sem := s.sem
-	s.rw.RUnlock()
-
 	select {
-	case <-sem:
-	case <-s.done:
+	case s.release <- struct{}{}:
+	case <-s.doneRelease:
 	}
 }
 
 // Stop closes its underlying Semaphore. It is safe to call multiple
-// times.
-func (s *Semaphore) Stop() {
+// times. If wait is true, it will block until all semaphores are
+// released.
+func (s *Semaphore) Stop(wait bool) {
 	s.once.Do(func() {
-		s.rw.Lock()
-		defer s.rw.Unlock()
-
-		s.sem = nil
-		close(s.done)
+		if wait {
+			// Block until .start has returned...
+			s.stop <- struct{}{}
+			// Then drain the channel
+			for s.count > 0 {
+				<-s.release
+				s.count--
+			}
+			// Shouldn't matter unless there's a programmatic error, but
+			// let's close this anyway...
+			close(s.doneRelease)
+		} else {
+			close(s.stop)
+			close(s.doneRelease)
+		}
 	})
 }
 
@@ -77,17 +112,14 @@ func (s *Semaphore) Stop() {
 // an expensive operation.
 func (s *Semaphore) Poll() bool {
 	select {
-	case <-s.done:
+	case <-s.doneAcquire:
 		return false
 	default:
 		return true
 	}
 }
 
+// Warning: This is racy
 func (s *Semaphore) String() string {
-	s.rw.RLock()
-	capacity, length := cap(s.sem), len(s.sem)
-	s.rw.RUnlock()
-
-	return fmt.Sprintf("Semaphore{ n: %d, used: %d }", capacity, length)
+	return fmt.Sprintf("Semaphore{ n: %d, used: %d }", s.max, s.count)
 }

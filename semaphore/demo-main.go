@@ -1,3 +1,6 @@
+// Allow package to be included in the same directory:
+// +build ignore
+
 // Demonstration of Semaphore package. No more than N routines should be
 // running at any one time.
 package main
@@ -36,6 +39,5 @@ func main() {
 		go worker(5 * i)
 	}
 	time.Sleep(10 * time.Second)
-	s.Stop()
-	time.Sleep(2 * time.Second)
+	s.Stop(true)
 }
