@@ -20,7 +20,7 @@ type Semaphore struct {
 	stop     chan chan struct{}
 	poll     chan struct{}
 	stringer chan stringerData
-	// once ensures that stop/done are not closed twice.
+	// once ensures that stop/poll are not closed twice.
 	once sync.Once
 }
 
