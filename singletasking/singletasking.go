@@ -3,45 +3,48 @@ package singletasking
 
 // Runner will run exactly one task at a time.
 type Runner struct {
-	run  chan busywork
-	stop chan bool
-}
-
-type busywork struct {
-	task func()
-	busy chan bool
+	runtask chan func()
+	runbusy chan bool
+	stop    chan bool
 }
 
 // New creates a new Runner. Call method Stop when done to prevent resource leak.
 func New() Runner {
 	r := Runner{
-		run:  make(chan busywork),
-		stop: make(chan bool),
+		runtask: make(chan func()),
+		runbusy: make(chan bool),
+		stop:    make(chan bool),
 	}
 	go r.init()
 	return r
 }
 
 func (r Runner) init() {
-	busy := false
+	var busyCh chan bool
+	taskCh := r.runtask
 	done := make(chan bool)
 	// Prevent stranding of goroutine if task finishes after Stop
 	defer close(done)
+	defer close(r.runbusy)
+	defer close(r.stop)
 
 	for {
 		select {
-		case bw := <-r.run:
-			bw.busy <- busy
-			if !busy {
-				go func() {
-					bw.task()
-					<-done
-				}()
-				busy = true
-			}
+		case busyCh <- true:
+
+		case task := <-taskCh:
+			go func() {
+				task()
+				<-done
+			}()
+			busyCh = r.runbusy
+			taskCh = nil
+
 		case done <- true:
-			busy = false
-		case <-r.stop:
+			busyCh = nil
+			taskCh = r.runtask
+
+		case r.stop <- true:
 			return
 		}
 	}
@@ -49,15 +52,15 @@ func (r Runner) init() {
 
 // Run accepts a task. If the runner is not busy, it returns true and the task is run in a goroutine. If the runner is busy, it returns false and the task is ignored.
 func (r Runner) Run(task func()) bool {
-	busy := make(chan bool)
-	r.run <- busywork{
-		task: task,
-		busy: busy,
+	select {
+	case r.runtask <- task:
+		return true
+	case <-r.runbusy:
+		return false
 	}
-	return !<-busy
 }
 
 // Stop causes the Runner to stop listening for tasks.
 func (r Runner) Stop() {
-	r.stop <- true
+	<-r.stop
 }
