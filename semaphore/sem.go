@@ -4,29 +4,23 @@
 // copy it and make your own specialized implementation.
 package semaphore
 
-import (
-	"fmt"
-	"sync"
-)
+import "fmt"
 
 // A Semaphore helps add restrictions on the number of active goroutines
 // by ensuring that no more than n tokens may be acquired at one time.
 // It also allows for the broadcasting of Stop messages.
 type Semaphore struct {
 	// use chan bool to simplify testing if channel is closed
-	acquire chan bool
-	release chan struct{}
-	// chan chan so that stop can wait for the main routine to finish
-	stop     chan chan struct{}
+	acquire  chan bool
+	release  chan struct{}
+	stop     chan struct{}
+	wait     chan struct{}
 	poll     chan struct{}
 	stringer chan stringerData
-	// once ensures that stop/poll are not closed twice.
-	once sync.Once
 }
 
 type stringerData struct {
 	max, count int
-	open       bool
 }
 
 // New creates a new Semaphore with n max number of tokens allowed.
@@ -34,7 +28,8 @@ func New(n int) *Semaphore {
 	s := Semaphore{
 		acquire:  make(chan bool),
 		release:  make(chan struct{}),
-		stop:     make(chan chan struct{}),
+		stop:     make(chan struct{}),
+		wait:     make(chan struct{}),
 		poll:     make(chan struct{}),
 		stringer: make(chan stringerData),
 	}
@@ -43,12 +38,8 @@ func New(n int) *Semaphore {
 }
 
 func (s *Semaphore) start(max int) {
-	var (
-		count int
-		wait  chan struct{}
-	)
+	count := 0
 
-MainLoop:
 	for {
 		var acquire = s.acquire
 
@@ -62,22 +53,22 @@ MainLoop:
 			count++
 		case s.release <- struct{}{}:
 			count--
-		case s.stringer <- stringerData{max, count, true}:
-		case wait = <-s.stop:
-			break MainLoop
-		}
-	}
-	close(s.acquire)
-	close(s.stringer)
+		case s.stringer <- stringerData{max, count}:
+		case s.stop <- struct{}{}:
+			close(s.acquire)
+			close(s.stringer)
+			close(s.poll)
+			close(s.stop)
 
-	if wait != nil {
-		for count > 0 {
-			s.release <- struct{}{}
-			count--
+			for count > 0 {
+				s.release <- struct{}{}
+				count--
+			}
+
+			close(s.wait)
+			return
 		}
-		close(wait)
 	}
-	close(s.release)
 }
 
 // Acquire returns true after it acquires a token from the underlying
@@ -93,19 +84,14 @@ func (s *Semaphore) Release() {
 }
 
 // Stop closes its underlying Semaphore. It is safe to call multiple
-// times. If wait is true, it will block until all semaphores are
-// released.
-func (s *Semaphore) Stop(wait bool) {
-	s.once.Do(func() {
-		close(s.poll)
-		if wait {
-			blocker := make(chan struct{})
-			s.stop <- blocker
-			<-blocker
-		} else {
-			s.stop <- nil
-		}
-	})
+// times.
+func (s *Semaphore) Stop() {
+	<-s.stop
+}
+
+// Wait blocks until all acquired tokens have been released.
+func (s *Semaphore) Wait() {
+	<-s.wait
 }
 
 // Poll reports whether the underlying Semaphore is open. For practical
@@ -122,8 +108,7 @@ func (s *Semaphore) Poll() bool {
 }
 
 func (s *Semaphore) String() string {
-	v := <-s.stringer
-	if v.open {
+	if v, ok := <-s.stringer; ok {
 		return fmt.Sprintf("Semaphore{ n: %d, used: %d }", v.max, v.count)
 	}
 	return "Semaphore{closed}"

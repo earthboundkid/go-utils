@@ -48,7 +48,7 @@ func BenchmarkSemAcqStop(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s := semaphore.New(1)
 		s.Acquire()
-		go s.Stop(false)
+		go s.Stop()
 		s.Acquire()
 	}
 }
@@ -65,7 +65,7 @@ func BenchmarkLSemAcqStop(b *testing.B) {
 func BenchmarkSemLoop1(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s := semaphore.New(1)
-		go s.Stop(false)
+		go s.Stop()
 		for s.Acquire() {
 		}
 	}
@@ -83,7 +83,7 @@ func BenchmarkLSemLoop1(b *testing.B) {
 func BenchmarkSemLoop5(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s := semaphore.New(5)
-		go s.Stop(false)
+		go s.Stop()
 		for s.Acquire() {
 		}
 	}
@@ -101,7 +101,7 @@ func BenchmarkLSemLoop5(b *testing.B) {
 func BenchmarkSemLoop50(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s := semaphore.New(50)
-		go s.Stop(false)
+		go s.Stop()
 		for s.Acquire() {
 		}
 	}
@@ -143,7 +143,6 @@ func BenchmarkLSemSleep(b *testing.B) {
 func BenchmarkSemWait(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s := semaphore.New(10)
-
 		for j := 0; j < 100; j++ {
 			go func() {
 				for s.Acquire() {
@@ -153,7 +152,8 @@ func BenchmarkSemWait(b *testing.B) {
 			}()
 		}
 		time.Sleep(100 * time.Nanosecond)
-		s.Stop(true)
+		s.Stop()
+		s.Wait()
 	}
 }
 
@@ -163,7 +163,6 @@ func BenchmarkLSemWait(b *testing.B) {
 
 		var wg sync.WaitGroup
 		wg.Add(100)
-
 		for j := 0; j < 100; j++ {
 			go func() {
 				defer wg.Done()

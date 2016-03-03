@@ -30,7 +30,7 @@ func worker(n int) {
 			time.Now().Format("15:04:05"), atomic.AddInt32(w, -1), n, "_")
 		s.Release()
 	}
-	fmt.Printf("%s\t%d\t%*s\n", time.Now().Format("15:04:05"), *w, n, "*")
+	fmt.Printf("%s\t%d\t%*s\n", time.Now().Format("15:04:05"), atomic.LoadInt32(w), n, "*")
 }
 
 func main() {
@@ -38,6 +38,9 @@ func main() {
 	for i := 0; i < 10; i++ {
 		go worker(5 * i)
 	}
-	time.Sleep(10 * time.Second)
-	s.Stop(true)
+	go func() {
+		time.Sleep(10 * time.Second)
+		s.Stop()
+	}()
+	s.Wait()
 }
