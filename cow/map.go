@@ -71,3 +71,11 @@ func (cowm *Map) Remove(key string) {
 	delete(dst, key)
 	cowm.v.Store(dst)
 }
+
+// Reset initializes the Map to the values in m. Use of nil to empty the Map is okay.
+func (cowm *Map) Reset(m map[string]string) {
+	cowm.m.Lock()
+	defer cowm.m.Unlock()
+
+	cowm.v.Store(dup(m))
+}

@@ -56,6 +56,14 @@ func BenchmarkRemove(b *testing.B) {
 	}
 }
 
+func BenchmarkReset(b *testing.B) {
+	c := cow.New(m)
+	for i := 0; i < b.N; i++ {
+		c.Reset(nil)
+		c.Insert("a", "a")
+	}
+}
+
 func BenchmarkGoRead(b *testing.B) {
 	c := cow.New(m)
 	for i := 0; i < b.N; i++ {
