@@ -6,7 +6,15 @@ import (
 	"github.com/carlmjohnson/go-utils/cow"
 )
 
-var m = map[string]string{"a": "a"}
+var m = map[string]string{}
+
+func init() {
+	s := "a"
+	for i := 0; i < 1024; i++ {
+		m[s] = s
+		s += "a"
+	}
+}
 
 func BenchmarkNew(b *testing.B) {
 	for i := 0; i < b.N; i++ {

@@ -20,7 +20,7 @@ func copyM(dst map[string]string, src map[string]string) {
 }
 
 func dup(src map[string]string) (dst map[string]string) {
-	dst = make(map[string]string)
+	dst = make(map[string]string, len(src))
 	copyM(dst, src)
 	return dst
 }
