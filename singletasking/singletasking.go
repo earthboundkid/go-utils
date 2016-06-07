@@ -64,3 +64,13 @@ func (r Runner) Run(task func()) bool {
 func (r Runner) Stop() {
 	<-r.stop
 }
+
+// Busy polls whether the Runner is currently busy with something else. Not very useful due to its inherent race conditions.
+func (r Runner) Busy() bool {
+	select {
+	case <-r.runbusy:
+		return true
+	default:
+		return false
+	}
+}
